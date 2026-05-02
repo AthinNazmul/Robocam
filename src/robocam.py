@@ -117,9 +117,11 @@ def detect_cameras():
     """
     Scan for all connected cameras via v4l2 + libcamera.
     Returns list of dicts: {index, name, type, device}
+    Filters out virtual devices (codecs, ISP processors).
     """
     cameras      = []
     seen_indices = set()
+    print("[robocam] Starting camera detection...", file=sys.stderr)
 
     # ── v4l2 scan ────────────────────────────────────────────
     try:
@@ -128,6 +130,10 @@ def detect_cameras():
             capture_output=True, text=True, timeout=5
         )
         current_name = "Unknown Camera"
+        
+        # Devices to SKIP (not real cameras)
+        skip_devices = ["bcm2835-codec", "bcm2835-isp", "rpivid", "bcm2711"]
+        
         for line in result.stdout.splitlines():
             line = line.strip()
             if not line:
@@ -135,15 +141,34 @@ def detect_cameras():
             if not line.startswith("/dev/"):
                 current_name = line.rstrip(":")
             elif line.startswith("/dev/video"):
+                # SKIP known virtual devices
+                if any(skip in current_name.lower() for skip in skip_devices):
+                    print(f"[robocam] Skipping {line} ({current_name})", file=sys.stderr)
+                    continue
+                    
                 m = re.search(r"/dev/video(\d+)", line)
                 if not m:
                     continue
                 idx = int(m.group(1))
                 if idx in seen_indices:
                     continue
+                
+                # Test if this device can actually capture frames
+                print(f"[robocam] Testing {line} ({current_name})...", file=sys.stderr)
+                cap = cv2.VideoCapture(idx, cv2.CAP_V4L2)
+                if not cap.isOpened():
+                    cap.release()
+                    print(f"[robocam]   → Can't open", file=sys.stderr)
+                    continue
+                ret, _ = cap.read()
+                cap.release()
+                if not ret:
+                    print(f"[robocam]   → Can't read frames", file=sys.stderr)
+                    continue
+                
+                print(f"[robocam]   → OK! Adding as camera", file=sys.stderr)
                 seen_indices.add(idx)
-                csi_kw   = ["mmal", "bcm", "unicam", "imx",
-                            "ov", "csi", "rpicam", "camera", "pisp"]
+                csi_kw   = ["mmal", "unicam", "imx", "ov", "csi", "rpicam", "camera", "pisp"]
                 cam_type = "CSI" if any(
                     k in current_name.lower() for k in csi_kw
                 ) else "USB"
@@ -207,9 +232,16 @@ def detect_cameras():
 
 
 def open_camera(cam_info, width=640, height=480):
-    """Open and return a cv2.VideoCapture. Uses CAP_V4L2 for stability."""
+    """
+    Open and return a cv2.VideoCapture.
+    For CSI cameras, tries libcamera first, then falls back to v4l2.
+    For USB cameras, uses v4l2 directly.
+    """
+    print(f"[robocam] Opening camera: {cam_info['name']} (type={cam_info['type']}, idx={cam_info['index']})", file=sys.stderr)
+    
     if cam_info["device"] == "libcamera":
-        # GStreamer libcamera pipeline
+        # Explicit libcamera device
+        print(f"[robocam]   → Trying libcamera pipeline...", file=sys.stderr)
         pipeline = (
             "libcamerasrc ! "
             f"video/x-raw,width={width},height={height},framerate=30/1 ! "
@@ -217,12 +249,42 @@ def open_camera(cam_info, width=640, height=480):
         )
         cap = cv2.VideoCapture(pipeline, cv2.CAP_GSTREAMER)
         if cap.isOpened():
+            print(f"[robocam]   → OK (libcamera)", file=sys.stderr)
             return cap
+        print(f"[robocam]   → Failed, trying v4l2 fallback...", file=sys.stderr)
         # Fallback to index 0
         cap = cv2.VideoCapture(0, cv2.CAP_V4L2)
         return cap
 
+    # For CSI cameras, try libcamera + GStreamer first
+    if cam_info["type"] == "CSI":
+        print(f"[robocam]   → CSI camera, trying libcamera...", file=sys.stderr)
+        try:
+            pipeline = (
+                "libcamerasrc ! "
+                f"video/x-raw,width={width},height={height},framerate=30/1 ! "
+                "videoconvert ! appsink drop=true max-buffers=2 sync=false"
+            )
+            cap = cv2.VideoCapture(pipeline, cv2.CAP_GSTREAMER)
+            if cap.isOpened():
+                # Test if we can actually read
+                ret, _ = cap.read()
+                if ret:
+                    print(f"[robocam]   → OK (libcamera/GStreamer)", file=sys.stderr)
+                    return cap
+                else:
+                    print(f"[robocam]   → Can't read frames from libcamera", file=sys.stderr)
+                    cap.release()
+        except Exception as e:
+            print(f"[robocam]   → libcamera error: {e}", file=sys.stderr)
+    
+    # Fall back to v4l2 (works for both CSI and USB)
+    print(f"[robocam]   → Trying v4l2 backend (index {cam_info['index']})...", file=sys.stderr)
     cap = cv2.VideoCapture(cam_info["index"], cv2.CAP_V4L2)
+    if cap.isOpened():
+        print(f"[robocam]   → OK (v4l2)", file=sys.stderr)
+    else:
+        print(f"[robocam]   → Failed to open via v4l2", file=sys.stderr)
     cap.set(cv2.CAP_PROP_FRAME_WIDTH,  width)
     cap.set(cv2.CAP_PROP_FRAME_HEIGHT, height)
     # Reduce internal buffer — prevents stale frames on slow ARM boards
