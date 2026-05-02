@@ -1,13 +1,13 @@
 #!/bin/bash
 # ============================================================
 #  RoboNeT Camera Tool — Launcher
-#  Author : Fahim Hafiz | United International University
+#  Author : Nazmul Hasan Athin | 
 #  GitHub : https://github.com/AthinNazmul/Robocam
 # ============================================================
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 VENV_DIR="$HOME/robocam/env"
-TOOL="$HOME/robocam/robocam.py"
+TOOL="$HOME/src/robocam.py"
 
 # ── If venv + installed tool exist, use them ─────────────────
 if [ -f "$VENV_DIR/bin/activate" ] && [ -f "$TOOL" ]; then
