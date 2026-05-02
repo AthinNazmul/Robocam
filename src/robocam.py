@@ -347,16 +347,16 @@ def open_camera(cam_info, width=640, height=480):
             print(f"[robocam]   ⚠️  v4l2 opened but can't read frames", file=sys.stderr)
             if cam_info["type"] == "CSI":
                 print(f"[robocam]", file=sys.stderr)
-                print(f"[robocam]   ❌ CSI Camera Not Supported on Ubuntu 22.04", file=sys.stderr)
+                print(f"[robocam]   ❌ CSI Camera Cannot Read Frames", file=sys.stderr)
                 print(f"[robocam]", file=sys.stderr)
-                print(f"[robocam]   Why: Ubuntu 22.04 ARM repo doesn't have libcamera", file=sys.stderr)
+                print(f"[robocam]   SOLUTION: Build libcamera from source", file=sys.stderr)
                 print(f"[robocam]", file=sys.stderr)
-                print(f"[robocam]   OPTIONS:", file=sys.stderr)
-                print(f"[robocam]   1. Try a USB Webcam (test robocam works)", file=sys.stderr)
-                print(f"[robocam]   2. Use Raspberry Pi OS (best for CSI)", file=sys.stderr)
-                print(f"[robocam]   3. Stay on Ubuntu 22.04 with USB cameras", file=sys.stderr)
+                print(f"[robocam]   Command: bash ~/Robocam/build_libcamera.sh", file=sys.stderr)
+                print(f"[robocam]   Time: ~15 minutes on Pi 4", file=sys.stderr)
+                print(f"[robocam]   Then: source ~/.bashrc && robocam", file=sys.stderr)
                 print(f"[robocam]", file=sys.stderr)
-                print(f"[robocam]   Status check: bash ~/Robocam/csi_status.sh", file=sys.stderr)
+                print(f"[robocam]   This builds libcamera + tools from Raspberry Pi's", file=sys.stderr)
+                print(f"[robocam]   official source code, enabling full CSI support.", file=sys.stderr)
     else:
         print(f"[robocam]   ✗ Failed to open device", file=sys.stderr)
     
@@ -834,13 +834,13 @@ class RoboCamApp(tk.Tk):
             msg = "Camera read error: can't get frames from device."
             if self.selected_cam and self.selected_cam.get("type") == "CSI":
                 msg += (
-                    "\n\n❌ CSI Camera Not Supported on Ubuntu 22.04\n\n"
-                    "Ubuntu 22.04 ARM repos don't include libcamera\n"
-                    "(camera system layer required for Pi Camera).\n\n"
-                    "SOLUTIONS:\n"
-                    "1. Try a USB Webcam (proves robocam works)\n"
-                    "2. Install Raspberry Pi OS (full camera support)\n"
-                    "3. Check system: bash ~/Robocam/csi_status.sh"
+                    "\n\n⚠️ CSI Camera Support on Ubuntu 22.04\n\n"
+                    "libcamera needs to be built from source.\n\n"
+                    "SOLUTION:\n"
+                    "1. bash ~/Robocam/build_libcamera.sh (~15 min)\n"
+                    "2. source ~/.bashrc\n"
+                    "3. robocam\n\n"
+                    "Then restart the app to use CSI camera."
                 )
             else:
                 msg += "\nCheck: Is the camera connected? Try another device?"
