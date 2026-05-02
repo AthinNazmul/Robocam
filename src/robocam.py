@@ -46,12 +46,32 @@ except ImportError:
 # Failure here = likely "Segmentation fault" on headless systems
 try:
     import tkinter as tk
-    from tkinter import ttk, filedialog
+    from tkinter import filedialog
     
     # Verify Tk can initialize (requires X11 display on Linux/ARM)
     # This will fail on headless systems or missing DISPLAY
     _test_root = tk.Tk()
     _test_root.destroy()
+    
+    # Detect if running on Raspberry Pi/ARM
+    # If yes, DON'T import ttk (causes crashes from tcl/tk bugs)
+    IS_ARM_PI = False
+    try:
+        with open('/proc/device-tree/model', 'r') as f:
+            model = f.read()
+            IS_ARM_PI = 'Raspberry' in model or 'bcm' in model.lower()
+    except:
+        pass
+    
+    # Only import ttk if NOT on Pi
+    if IS_ARM_PI:
+        ttk = None  # Disable ttk completely
+    else:
+        try:
+            from tkinter import ttk
+        except:
+            ttk = None
+            
 except Exception as e:
     print("[ERROR] Tkinter GUI initialization failed.")
     print("        Possible causes:")
@@ -389,13 +409,17 @@ class RoboCamApp(tk.Tk):
             anchor="w", padx=8, pady=(6, 0))
         self.res_var = tk.StringVar(value="640x480")
         
-        # Try to use ttk.Combobox, but fall back to tk.Entry on ARM if needed
-        try:
-            ttk.Combobox(sc, textvariable=self.res_var,
-                         values=["320x240", "640x480", "1280x720", "1920x1080"],
-                         state="readonly", width=18).pack(padx=8, pady=4, anchor="w")
-        except Exception:
-            # Fallback: simple tk.Entry if ttk fails
+        # Try to use ttk.Combobox, but fall back to tk.Entry
+        if ttk is not None:
+            try:
+                ttk.Combobox(sc, textvariable=self.res_var,
+                             values=["320x240", "640x480", "1280x720", "1920x1080"],
+                             state="readonly", width=18).pack(padx=8, pady=4, anchor="w")
+            except Exception:
+                tk.Entry(sc, textvariable=self.res_var, width=18,
+                         bg=BG_CARD, fg=TEXT_PRIMARY, relief="flat").pack(padx=8, pady=4, anchor="w")
+        else:
+            # TTK not available (Pi), use simple Entry
             tk.Entry(sc, textvariable=self.res_var, width=18,
                      bg=BG_CARD, fg=TEXT_PRIMARY, relief="flat").pack(padx=8, pady=4, anchor="w")
         tk.Label(sc, text="Save Folder", bg=BG_CARD,
@@ -496,25 +520,24 @@ class RoboCamApp(tk.Tk):
 
     def _apply_styles(self):
         """
-        Apply ttk styles. On ARM/Pi systems, some theme operations can cause
-        segmentation faults. We wrap everything in try/except to be safe.
+        Apply ttk styles only if available.
+        On ARM/Pi systems, ttk is disabled to avoid crashes.
+        App works fine without ttk styling.
         """
+        if ttk is None:
+            # TTK disabled - just return, app still works
+            return
+        
         try:
             style = ttk.Style(self)
-            # Skip theme_use() on Pi — it causes crashes on some systems
-            # style.theme_use("default")  # ← Disabled for ARM compatibility
-            try:
-                style.configure("TCombobox",
-                                fieldbackground=BG_CARD, background=BG_CARD,
-                                foreground=TEXT_PRIMARY, selectbackground=ACCENT2,
-                                borderwidth=0)
-                style.configure("TSeparator", background=BORDER)
-            except Exception:
-                # If even style.configure fails, just skip it
-                pass
+            style.configure("TCombobox",
+                            fieldbackground=BG_CARD, background=BG_CARD,
+                            foreground=TEXT_PRIMARY, selectbackground=ACCENT2,
+                            borderwidth=0)
+            style.configure("TSeparator", background=BORDER)
         except Exception as e:
-            # If ttk styling fails, the app still works fine
-            print(f"[WARN] ttk styling not available (app will still work): {e}", file=sys.stderr)
+            # Even on non-Pi systems, if ttk fails, just skip it
+            print(f"[WARN] ttk styling unavailable: {e}", file=sys.stderr)
 
     def _log(self, msg, level="info"):
         ts = datetime.datetime.now().strftime("%H:%M:%S")
