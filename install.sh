@@ -116,7 +116,8 @@ declare -A PKGS=(
     ["gstreamer1.0-plugins-base"]="GStreamer base plugins"
     ["gstreamer1.0-plugins-good"]="GStreamer good plugins"
     ["gstreamer1.0-plugins-bad"]="GStreamer bad plugins (codec support)"
-    ["gstreamer1.0-libcamera"]="GStreamer libcamera plugin (IMPORTANT)"
+    ["gstreamer1.0-libcamera"]="GStreamer libcamera plugin (CRITICAL)"
+    ["libcamera-tools"]="libcamera command-line tools"
     ["libopenjp2-7"]="JPEG2000 codec"
 )
 
@@ -126,22 +127,70 @@ for pkg in "${!PKGS[@]}"; do
         success "$pkg — already installed"
     else
         info "Installing $pkg..."
+        INSTALL_SUCCESS=false
+        
+        # First attempt with quiet mode
         if sudo apt install -y "$pkg" -qq 2>/dev/null; then
+            INSTALL_SUCCESS=true
+        # Second attempt with normal output in case of transient failures
+        elif sudo apt install -y "$pkg" 2>/dev/null; then
+            INSTALL_SUCCESS=true
+        # Third attempt: Try alternative package names for known cases
+        elif [ "$pkg" = "gstreamer1.0-libcamera" ]; then
+            info "Alternative: Trying gstreamer1.0-plugin-libcamera..."
+            if sudo apt install -y gstreamer1.0-plugin-libcamera -qq 2>/dev/null; then
+                INSTALL_SUCCESS=true
+            fi
+        fi
+        
+        if [ "$INSTALL_SUCCESS" = true ]; then
             success "$pkg — installed"
         else
-            # Try again with normal priority in case of transient failures
-            if sudo apt install -y "$pkg" 2>/dev/null; then
-                success "$pkg — installed (with warnings)"
+            if [[ "$desc" == *"CRITICAL"* ]]; then
+                error "❌ CRITICAL: $pkg failed to install. This is required for CSI cameras."
+            elif [[ "$desc" == *"REQUIRED"* ]]; then
+                error "❌ CRITICAL: $pkg failed to install. Cannot continue."
             else
-                if [[ "$desc" == *"REQUIRED"* ]]; then
-                    error "CRITICAL: $pkg failed to install. Cannot continue."
-                else
-                    warn "$pkg — failed to install (continued anyway)"
-                fi
+                warn "⚠️  $pkg — failed to install (tool may still work with USB cameras)"
             fi
         fi
     fi
 done
+
+# Verify critical libcamera packages were actually installed
+step "Verifying libcamera Installation"
+LIBCAM_OK=true
+for verify_pkg in libcamera0 libcamera-dev gstreamer1.0-libcamera; do
+    if dpkg -s "$verify_pkg" &>/dev/null 2>&1; then
+        success "$verify_pkg — verified installed ✓"
+    else
+        warn "⚠️  $verify_pkg — NOT INSTALLED. Attempting recovery..."
+        LIBCAM_OK=false
+        
+        # Aggressive recovery: Force update cache and retry
+        info "Running aggressive recovery: sudo apt update && sudo apt install -y $verify_pkg"
+        if sudo apt update -qq && sudo apt install -y "$verify_pkg" 2>&1 | tail -5; then
+            if dpkg -s "$verify_pkg" &>/dev/null 2>&1; then
+                success "$verify_pkg — recovered! ✓"
+                LIBCAM_OK=true
+            fi
+        fi
+    fi
+done
+
+if [ "$LIBCAM_OK" = false ]; then
+    echo ""
+    warn "⚠️  Some libcamera packages failed to install."
+    warn "This may be due to:"
+    warn "   • Ubuntu repository issues"
+    warn "   • Network connectivity"
+    warn "   • Package conflicts"
+    warn ""
+    warn "Try these manual fixes:"
+    warn "   sudo apt update"
+    warn "   sudo apt install -y libcamera0 libcamera-dev gstreamer1.0-libcamera libcamera-tools"
+    warn ""
+fi
 
 # ── Step 3: Virtual environment ───────────────────────────────
 step "Step 3 — Python Virtual Environment"
@@ -229,15 +278,31 @@ success "Output folder: ~/robocam_output/"
 # ── Step 7: User permissions ─────────────────────────────────
 step "Step 7 — Setting Camera Permissions"
 
+info "Ensuring user is in video group..."
 if groups "$USER" | grep -q video; then
-    success "User already in video group"
+    success "User already in video group ✓"
 else
-    info "Adding user to video group (for camera access)..."
+    info "Adding user to 'video' group for camera access..."
     if sudo usermod -a -G video "$USER" 2>/dev/null; then
-        success "User added to video group"
-        warn "⚠️  Log out and back in, or run: newgrp video"
+        success "User added to video group ✓"
+        warn ""
+        warn "⚠️  IMPORTANT: Permissions require one of these:"
+        warn "    1. Log out and back in (RECOMMENDED)"
+        warn "    2. Run: newgrp video"
+        warn "    3. Reboot system: sudo reboot"
+        warn ""
+        warn "Without relogging, camera access may fail!"
+        warn ""
     else
-        warn "Could not add to video group — try: sudo usermod -a -G video $USER"
+        error "❌ Failed to add user to video group. Try: sudo usermod -a -G video $USER"
+    fi
+fi
+
+# Also ensure dialout group for some camera devices
+if ! groups "$USER" | grep -q dialout; then
+    info "Adding user to 'dialout' group (for some camera devices)..."
+    if sudo usermod -a -G dialout "$USER" 2>/dev/null; then
+        success "User added to dialout group ✓"
     fi
 fi
 
@@ -255,7 +320,29 @@ sudo chmod +x "$LAUNCHER_BIN"
 success "System launcher created: robocam"
 
 # ── Step 9: Camera detection check ───────────────────────────
-step "Step 9 — Camera Detection Check"
+step "Step 9 — Verifying libcamera Setup"
+
+info "Checking if libcamera is operational..."
+if command -v libcamera-hello &>/dev/null; then
+    if libcamera-hello --list-cameras &>/dev/null; then
+        success "✓ libcamera is working"
+    else
+        warn "⚠️  libcamera installed but not responding"
+        warn "This may require a system reboot to initialize properly."
+    fi
+else
+    warn "⚠️  libcamera command tools not found"
+    warn "Installing libcamera-tools..."
+    if sudo apt install -y libcamera-tools -qq 2>/dev/null; then
+        success "libcamera-tools installed ✓"
+    else
+        warn "Could not install libcamera-tools via apt"
+        warn "You may need to install manually: sudo apt install -y libcamera-tools"
+    fi
+fi
+
+# ── Step 10: Camera detection check ───────────────────────────
+step "Step 10 — Camera Detection Test"
 
 echo "  Scanning v4l2 devices..."
 echo ""
@@ -269,7 +356,7 @@ fi
 echo ""
 echo "  Scanning libcamera devices..."
 echo ""
-LIBCAM_OUT=$(libcamera-hello --list-cameras 2>&1 | grep -v "^$" | head -10 || echo "  (libcamera not available)")
+LIBCAM_OUT=$(libcamera-hello --list-cameras 2>&1 | grep -v "^$" | head -10 || echo "  (libcamera-hello not available)")
 echo "$LIBCAM_OUT" | sed 's/^/    /'
 
 # ── Done ─────────────────────────────────────────────────────
@@ -279,22 +366,35 @@ echo -e "${GREEN}${BOLD}"
 echo "  ✅  Installation Complete!"
 echo -e "${NC}"
 echo ""
-echo -e "  ${BOLD}🚀 Launch the tool:${NC}"
+echo -e "  ${BOLD}� What You Just Installed:${NC}"
 echo ""
-echo -e "    ${CYAN}robocam${NC}  (from anywhere)"
+echo "    ✓ Python 3 with Tkinter GUI"
+echo "    ✓ OpenCV camera library"
+echo "    ✓ libcamera support (for CSI cameras)"
+echo "    ✓ GStreamer with libcamera plugin"
+echo "    ✓ Camera device detection tools"
 echo ""
-echo -e "  ${BOLD}Or:${NC}"
+echo -e "  ${BOLD}🔧 Next Steps (IMPORTANT):${NC}"
+echo ""
+echo "    ${YELLOW}1. REBOOT YOUR SYSTEM:${NC}"
+echo "       ${CYAN}sudo reboot${NC}"
+echo ""
+echo "       (This initializes camera permissions and firmware)"
+echo ""
+echo "    ${YELLOW}2. AFTER REBOOT, launch the tool:${NC}"
+echo "       ${CYAN}robocam${NC}  (from anywhere)"
+echo ""
+echo "-"
+echo ""
+echo -e "  ${BOLD}📸 Alternative launch methods:${NC}"
 echo ""
 echo -e "    ${CYAN}bash ~/robocam/run_robocam.sh${NC}"
+echo -e "    ${CYAN}Desktop → RoboNeT Camera Tool.desktop${NC}"
 echo ""
-echo -e "  ${BOLD}Desktop shortcut:${NC}  See Desktop → RoboNeT Camera Tool.desktop"
+echo -e "  ${BOLD}📁 Output location:${NC}  ${CYAN}~/robocam_output/${NC}"
 echo ""
-echo -e "  ${BOLD}Photos & videos saved to:${NC}  ${CYAN}~/robocam_output/${NC}"
-echo ""
-if [[ "$SHELL" == *"bash"* ]] || [[ "$SHELL" == *"zsh"* ]]; then
-    echo -e "  ${YELLOW}💡 Tip: Add to ~/.bashrc or ~/.zshrc for auto-complete:${NC}"
-    echo -e "    ${CYAN}alias robocam='robocam'${NC}"
-fi
-echo ""
+echo "────────────────────────────────────────────────────────────"
+echo -e "  ${CYAN}Tip: If camera still doesn't work:${NC}"
+echo "    Run: ${CYAN}bash ~/Robocam/check_libcamera.sh${NC}"
 echo "────────────────────────────────────────────────────────────"
 echo ""
