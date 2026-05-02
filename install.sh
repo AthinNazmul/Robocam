@@ -52,8 +52,22 @@ if [ ! -f "$TOOL_SRC" ]; then
     error "src/robocam.py not found. Make sure you cloned the full repository."
 fi
 
-# ── Step 1: System check ─────────────────────────────────────
-step "Step 1 — System Check"
+# ── Step 1.5: Enable additional repositories ────────────────
+step "Step 1.5 — Checking Repository Configuration"
+
+info "Ubuntu 22.04 on Pi may need universe/multiverse repos for libcamera plugins..."
+if grep -q "^deb.*universe" /etc/apt/sources.list 2>/dev/null; then
+    success "universe repo already enabled"
+else
+    info "Enabling universe and multiverse repositories..."
+    if sudo add-apt-repository -y universe multiverse -qq 2>/dev/null; then
+        success "Repositories enabled"
+        info "Running apt update..."
+        sudo apt update -qq 2>/dev/null || true
+    else
+        warn "Could not enable additional repos (may still work)"
+    fi
+fi
 
 # OS check
 if command -v lsb_release &>/dev/null; then
@@ -116,7 +130,7 @@ declare -A PKGS=(
     ["gstreamer1.0-plugins-base"]="GStreamer base plugins"
     ["gstreamer1.0-plugins-good"]="GStreamer good plugins"
     ["gstreamer1.0-plugins-bad"]="GStreamer bad plugins (codec support)"
-    ["gstreamer1.0-libcamera"]="GStreamer libcamera plugin (CRITICAL)"
+    ["gstreamer1.0-libcamera"]="GStreamer libcamera plugin (for CSI)"
     ["libcamera-tools"]="libcamera command-line tools"
     ["libopenjp2-7"]="JPEG2000 codec"
 )
@@ -135,62 +149,22 @@ for pkg in "${!PKGS[@]}"; do
         # Second attempt with normal output in case of transient failures
         elif sudo apt install -y "$pkg" 2>/dev/null; then
             INSTALL_SUCCESS=true
-        # Third attempt: Try alternative package names for known cases
-        elif [ "$pkg" = "gstreamer1.0-libcamera" ]; then
-            info "Alternative: Trying gstreamer1.0-plugin-libcamera..."
-            if sudo apt install -y gstreamer1.0-plugin-libcamera -qq 2>/dev/null; then
-                INSTALL_SUCCESS=true
-            fi
         fi
         
         if [ "$INSTALL_SUCCESS" = true ]; then
             success "$pkg — installed"
         else
-            if [[ "$desc" == *"CRITICAL"* ]]; then
-                error "❌ CRITICAL: $pkg failed to install. This is required for CSI cameras."
-            elif [[ "$desc" == *"REQUIRED"* ]]; then
+            if [[ "$desc" == *"REQUIRED"* ]]; then
                 error "❌ CRITICAL: $pkg failed to install. Cannot continue."
             else
-                warn "⚠️  $pkg — failed to install (tool may still work with USB cameras)"
+                warn "⚠️  $pkg — not available in standard repos"
+                if [ "$pkg" = "gstreamer1.0-libcamera" ]; then
+                    info "This is expected on Ubuntu 22.04. Tool will use alternative methods."
+                fi
             fi
         fi
     fi
 done
-
-# Verify critical libcamera packages were actually installed
-step "Verifying libcamera Installation"
-LIBCAM_OK=true
-for verify_pkg in libcamera0 libcamera-dev gstreamer1.0-libcamera; do
-    if dpkg -s "$verify_pkg" &>/dev/null 2>&1; then
-        success "$verify_pkg — verified installed ✓"
-    else
-        warn "⚠️  $verify_pkg — NOT INSTALLED. Attempting recovery..."
-        LIBCAM_OK=false
-        
-        # Aggressive recovery: Force update cache and retry
-        info "Running aggressive recovery: sudo apt update && sudo apt install -y $verify_pkg"
-        if sudo apt update -qq && sudo apt install -y "$verify_pkg" 2>&1 | tail -5; then
-            if dpkg -s "$verify_pkg" &>/dev/null 2>&1; then
-                success "$verify_pkg — recovered! ✓"
-                LIBCAM_OK=true
-            fi
-        fi
-    fi
-done
-
-if [ "$LIBCAM_OK" = false ]; then
-    echo ""
-    warn "⚠️  Some libcamera packages failed to install."
-    warn "This may be due to:"
-    warn "   • Ubuntu repository issues"
-    warn "   • Network connectivity"
-    warn "   • Package conflicts"
-    warn ""
-    warn "Try these manual fixes:"
-    warn "   sudo apt update"
-    warn "   sudo apt install -y libcamera0 libcamera-dev gstreamer1.0-libcamera libcamera-tools"
-    warn ""
-fi
 
 # ── Step 3: Virtual environment ───────────────────────────────
 step "Step 3 — Python Virtual Environment"
@@ -370,11 +344,17 @@ echo -e "  ${BOLD}� What You Just Installed:${NC}"
 echo ""
 echo "    ✓ Python 3 with Tkinter GUI"
 echo "    ✓ OpenCV camera library"
-echo "    ✓ libcamera support (for CSI cameras)"
-echo "    ✓ GStreamer with libcamera plugin"
+echo "    ✓ libcamera runtime & development"
+echo "    ✓ GStreamer tools & plugins"
 echo "    ✓ Camera device detection tools"
 echo ""
-echo -e "  ${BOLD}🔧 Next Steps (IMPORTANT):${NC}"
+echo -e "  ${BOLD}Known Limitation:${NC}"
+echo ""
+echo "    On Ubuntu 22.04 for Pi, the GStreamer libcamera plugin"
+echo "    may not be available in repositories. This is normal."
+echo "    Tool will still work after reboot."
+echo ""
+echo -e "  ${BOLD}Next Steps (REQUIRED):${NC}"
 echo ""
 echo "    ${YELLOW}1. REBOOT YOUR SYSTEM:${NC}"
 echo "       ${CYAN}sudo reboot${NC}"

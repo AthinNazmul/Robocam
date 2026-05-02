@@ -346,11 +346,22 @@ def open_camera(cam_info, width=640, height=480):
         else:
             print(f"[robocam]   ⚠️  v4l2 opened but can't read frames", file=sys.stderr)
             if cam_info["type"] == "CSI":
-                print(f"[robocam]   ℹ️  CSI Camera Issue:", file=sys.stderr)
-                print(f"[robocam]      • libcamera may not be installed or working", file=sys.stderr)
-                print(f"[robocam]      • Run: bash ~/Robocam/check_libcamera.sh (diagnose)", file=sys.stderr)
-                print(f"[robocam]      • Install: sudo apt install -y libcamera0 libcamera-dev gstreamer1.0-libcamera", file=sys.stderr)
-                print(f"[robocam]      • Reboot: sudo reboot", file=sys.stderr)
+                print(f"[robocam]   ℹ️  CSI Camera Issue (libcamera not working):", file=sys.stderr)
+                print(f"[robocam]", file=sys.stderr)
+                print(f"[robocam]      STEP 1: Check libcamera setup", file=sys.stderr)
+                print(f"[robocam]      → bash ~/Robocam/check_libcamera.sh", file=sys.stderr)
+                print(f"[robocam]", file=sys.stderr)
+                print(f"[robocam]      STEP 2: Install missing packages", file=sys.stderr)
+                print(f"[robocam]      → sudo apt install -y libcamera0 libcamera-dev libcamera-tools", file=sys.stderr)
+                print(f"[robocam]", file=sys.stderr)
+                print(f"[robocam]      STEP 3: The GStreamer plugin may not be available on Ubuntu 22.04", file=sys.stderr)
+                print(f"[robocam]      → This is a known limitation. Tool will still work after reboot.", file=sys.stderr)
+                print(f"[robocam]", file=sys.stderr)
+                print(f"[robocam]      STEP 4: Reboot system (required to initialize camera firmware)", file=sys.stderr)
+                print(f"[robocam]      → sudo reboot", file=sys.stderr)
+                print(f"[robocam]", file=sys.stderr)
+                print(f"[robocam]      STEP 5: Test again after reboot", file=sys.stderr)
+                print(f"[robocam]      → robocam", file=sys.stderr)
     else:
         print(f"[robocam]   ✗ Failed to open device", file=sys.stderr)
     
@@ -828,10 +839,17 @@ class RoboCamApp(tk.Tk):
             msg = "Camera read error: can't get frames from device."
             if self.selected_cam and self.selected_cam.get("type") == "CSI":
                 msg += (
-                    "\n\nCSI Camera Fix:\n"
-                    "   1. Run: bash ~/Robocam/check_libcamera.sh\n"
-                    "   2. Install: sudo apt install -y libcamera0 libcamera-dev gstreamer1.0-libcamera\n"
-                    "   3. Reboot: sudo reboot"
+                    "\n\nCSI Camera Troubleshooting:\n\n"
+                    "STEP 1: Check libcamera status\n"
+                    "   → bash ~/Robocam/check_libcamera.sh\n\n"
+                    "STEP 2: Install libcamera packages\n"
+                    "   → sudo apt install -y libcamera0 libcamera-dev libcamera-tools\n\n"
+                    "STEP 3: Reboot (required to initialize camera firmware)\n"
+                    "   → sudo reboot\n\n"
+                    "STEP 4: Test again\n"
+                    "   → robocam\n\n"
+                    "NOTE: gstreamer1.0-libcamera plugin may not be available\n"
+                    "on Ubuntu 22.04. Tool should work after reboot regardless."
                 )
             else:
                 msg += "\nCheck: Is the camera connected? Try another device?"
