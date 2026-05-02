@@ -346,22 +346,19 @@ def open_camera(cam_info, width=640, height=480):
         else:
             print(f"[robocam]   ⚠️  v4l2 opened but can't read frames", file=sys.stderr)
             if cam_info["type"] == "CSI":
-                print(f"[robocam]   ℹ️  CSI Camera Issue (libcamera not working):", file=sys.stderr)
+                print(f"[robocam]   ℹ️  CSI Camera Not Working - Ubuntu 22.04 Limitation:", file=sys.stderr)
                 print(f"[robocam]", file=sys.stderr)
-                print(f"[robocam]      STEP 1: Check libcamera setup", file=sys.stderr)
-                print(f"[robocam]      → bash ~/Robocam/check_libcamera.sh", file=sys.stderr)
+                print(f"[robocam]      SOLUTION 1: Run the CSI camera fix script", file=sys.stderr)
+                print(f"[robocam]      → bash ~/Robocam/fix_csi_camera.sh", file=sys.stderr)
+                print(f"[robocam]      (Tries to install libcamera from alternative sources)", file=sys.stderr)
                 print(f"[robocam]", file=sys.stderr)
-                print(f"[robocam]      STEP 2: Install missing packages", file=sys.stderr)
-                print(f"[robocam]      → sudo apt install -y libcamera0 libcamera-dev libcamera-tools", file=sys.stderr)
+                print(f"[robocam]      SOLUTION 2: Test with a USB webcam first", file=sys.stderr)
+                print(f"[robocam]      → Connect any USB camera and verify robocam works", file=sys.stderr)
+                print(f"[robocam]      → CSI cameras need libcamera (system limitation)", file=sys.stderr)
                 print(f"[robocam]", file=sys.stderr)
-                print(f"[robocam]      STEP 3: The GStreamer plugin may not be available on Ubuntu 22.04", file=sys.stderr)
-                print(f"[robocam]      → This is a known limitation. Tool will still work after reboot.", file=sys.stderr)
-                print(f"[robocam]", file=sys.stderr)
-                print(f"[robocam]      STEP 4: Reboot system (required to initialize camera firmware)", file=sys.stderr)
-                print(f"[robocam]      → sudo reboot", file=sys.stderr)
-                print(f"[robocam]", file=sys.stderr)
-                print(f"[robocam]      STEP 5: Test again after reboot", file=sys.stderr)
-                print(f"[robocam]      → robocam", file=sys.stderr)
+                print(f"[robocam]      SOLUTION 3: Use Raspberry Pi OS instead", file=sys.stderr)
+                print(f"[robocam]      → Official Pi OS includes full camera support", file=sys.stderr)
+                print(f"[robocam]      → robocam will work immediately on Pi OS", file=sys.stderr)
     else:
         print(f"[robocam]   ✗ Failed to open device", file=sys.stderr)
     
@@ -839,17 +836,16 @@ class RoboCamApp(tk.Tk):
             msg = "Camera read error: can't get frames from device."
             if self.selected_cam and self.selected_cam.get("type") == "CSI":
                 msg += (
-                    "\n\nCSI Camera Troubleshooting:\n\n"
-                    "STEP 1: Check libcamera status\n"
-                    "   → bash ~/Robocam/check_libcamera.sh\n\n"
-                    "STEP 2: Install libcamera packages\n"
-                    "   → sudo apt install -y libcamera0 libcamera-dev libcamera-tools\n\n"
-                    "STEP 3: Reboot (required to initialize camera firmware)\n"
-                    "   → sudo reboot\n\n"
-                    "STEP 4: Test again\n"
-                    "   → robocam\n\n"
-                    "NOTE: gstreamer1.0-libcamera plugin may not be available\n"
-                    "on Ubuntu 22.04. Tool should work after reboot regardless."
+                    "\n\nCSI Camera on Ubuntu 22.04 — Known Limitation:\n\n"
+                    "Ubuntu 22.04 doesn't include libcamera in standard repos.\n\n"
+                    "FIX OPTIONS:\n\n"
+                    "1. Try the CSI camera fix script:\n"
+                    "   → bash ~/Robocam/fix_csi_camera.sh\n\n"
+                    "2. Test with USB camera first\n"
+                    "   → Proves robocam works\n\n"
+                    "3. Use official Raspberry Pi OS\n"
+                    "   → Full camera support included\n"
+                    "   → robocam works immediately"
                 )
             else:
                 msg += "\nCheck: Is the camera connected? Try another device?"
