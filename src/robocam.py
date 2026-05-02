@@ -263,7 +263,7 @@ def detect_cameras():
     has_libcam = has_libcamera_support()
     if has_csi and not has_libcam:
         print(f"[robocam] ⚠️  WARNING: CSI camera detected but libcamera not working!", file=sys.stderr)
-        print(f"[robocam]    Fix: sudo apt install -y libcamera0 libcamera-dev gstreamer1.0-libcamera", file=sys.stderr)
+        print(f"[robocam]    Solution: bash ~/Robocam/build_libcamera.sh (builds from Raspberry Pi source)", file=sys.stderr)
     
     return cameras
 
@@ -742,11 +742,12 @@ class RoboCamApp(tk.Tk):
             msg = "Failed to open camera."
             if self.selected_cam["type"] == "CSI":
                 msg += (
-                    "\n\nCSI Camera Fix:\n"
-                    "   1. Run: bash ~/Robocam/check_libcamera.sh (to diagnose)\n"
-                    "   2. Install libcamera: sudo apt install -y libcamera0 libcamera-dev gstreamer1.0-libcamera\n"
-                    "   3. Reboot: sudo reboot\n"
-                    "   4. Try again"
+                    "\n\n🔧 CSI Camera Setup Required:\n\n"
+                    "Build libcamera from source:\n"
+                    "   bash ~/Robocam/build_libcamera.sh\n"
+                    "   source ~/.bashrc\n"
+                    "   robocam\n\n"
+                    "This takes ~15 minutes on Pi 4."
                 )
             else:
                 msg += " Try another USB camera, or check connections."
