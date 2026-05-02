@@ -1,7 +1,7 @@
 #!/bin/bash
 # ============================================================
 #  RoboNeT Camera Tool — Installer
-#  Author : Fahim Hafiz | United International University
+#  Author : FNazmul Hasan Athin| United International University
 #  GitHub : https://github.com/FahimHafiz/robocam-tool
 #  OS     : Ubuntu 24.04 LTS
 #  Pi     : Raspberry Pi 4 & 5
@@ -59,11 +59,13 @@ step "Step 1 — System Check"
 if command -v lsb_release &>/dev/null; then
     OS_VER=$(lsb_release -rs)
     OS_NAME=$(lsb_release -ds)
-    if [[ "$OS_VER" == "24.04" ]]; then
-        success "OS: $OS_NAME"
+    if [[ "$OS_VER" == "22.04" || "$OS_VER" == "23.10" || "$OS_VER" == "24.04" ]]; then
+        success "OS: $OS_NAME ✓"
+    elif [[ "$OS_VER" < "22.04" ]]; then
+        warn "Ubuntu $OS_VER is older than 22.04 — some features may not work."
+        warn "Strongly recommend upgrading to Ubuntu 22.04 LTS or newer."
     else
-        warn "Expected Ubuntu 24.04, found: $OS_NAME"
-        warn "Proceeding — some packages may differ on your OS."
+        warn "Detected: $OS_NAME — proceeding."
     fi
 else
     warn "Cannot detect OS version. Proceeding anyway."
@@ -96,10 +98,16 @@ step "Step 2 — Installing System Packages"
 info "Running apt update..."
 sudo apt update -qq 2>/dev/null
 
+# Detect Python minor version for correct venv package name
+# Ubuntu 22.04 ships Python 3.10, Ubuntu 24.04 ships Python 3.12
+PYTHON_MINOR=$(python3 -c "import sys; print(sys.version_info.minor)")
+VENV_PKG="python3.${PYTHON_MINOR}-venv"
+info "Detected Python 3.$PYTHON_MINOR — will install $VENV_PKG"
+
 declare -A PKGS=(
     ["python3-tk"]="Tkinter GUI framework"
     ["python3-pip"]="Python package manager"
-    ["python3.12-venv"]="Python virtual environment"
+    ["$VENV_PKG"]="Python virtual environment"
     ["v4l-utils"]="Camera device detection (v4l2)"
     ["libcamera-apps"]="CSI camera support (libcamera)"
 )
