@@ -265,8 +265,12 @@ def open_camera(cam_info, width=640, height=480):
         )
         cap = cv2.VideoCapture(pipeline, cv2.CAP_GSTREAMER)
         if cap.isOpened():
-            print(f"[robocam]   → OK (libcamera)", file=sys.stderr)
-            return cap
+            ret, _ = cap.read()
+            if ret:
+                print(f"[robocam]   → OK (libcamera/GStreamer)", file=sys.stderr)
+                return cap
+            cap.release()
+            print(f"[robocam]   → Pipeline opened but can't read frames", file=sys.stderr)
         print(f"[robocam]   → Failed, trying v4l2 fallback...", file=sys.stderr)
         # Fallback to index 0
         cap = cv2.VideoCapture(0, cv2.CAP_V4L2)
@@ -274,7 +278,7 @@ def open_camera(cam_info, width=640, height=480):
 
     # For CSI cameras, try libcamera + GStreamer first
     if cam_info["type"] == "CSI":
-        print(f"[robocam]   → CSI camera, trying libcamera...", file=sys.stderr)
+        print(f"[robocam]   → CSI camera, trying libcamera GStreamer...", file=sys.stderr)
         try:
             pipeline = (
                 "libcamerasrc ! "
@@ -289,21 +293,45 @@ def open_camera(cam_info, width=640, height=480):
                     print(f"[robocam]   → OK (libcamera/GStreamer)", file=sys.stderr)
                     return cap
                 else:
-                    print(f"[robocam]   → Can't read frames from libcamera", file=sys.stderr)
+                    print(f"[robocam]   → GStreamer opened but can't read (libcamera-plugin missing?)", file=sys.stderr)
                     cap.release()
         except Exception as e:
-            print(f"[robocam]   → libcamera error: {e}", file=sys.stderr)
+            print(f"[robocam]   → GStreamer error: {e}", file=sys.stderr)
+        
+        # Try libcamera-raw directly as last resort for CSI
+        print(f"[robocam]   → Trying libcamera-raw alternative...", file=sys.stderr)
+        try:
+            import subprocess as sp
+            result = sp.run(["which", "libcamera-raw"], capture_output=True)
+            if result.returncode == 0:
+                # libcamera-raw available, but we can't use it directly with OpenCV
+                # So this is just informational
+                print(f"[robocam]   → libcamera-raw command exists, but using v4l2 fallback", file=sys.stderr)
+        except Exception:
+            pass
     
-    # Fall back to v4l2 (works for both CSI and USB)
+    # Fall back to v4l2 (works for USB, may not work for CSI without libcamera)
     print(f"[robocam]   → Trying v4l2 backend (index {cam_info['index']})...", file=sys.stderr)
     cap = cv2.VideoCapture(cam_info["index"], cv2.CAP_V4L2)
     if cap.isOpened():
-        print(f"[robocam]   → OK (v4l2)", file=sys.stderr)
+        # Try to read a frame to verify it works
+        ret, _ = cap.read()
+        if ret:
+            print(f"[robocam]   → OK (v4l2) — Camera working!", file=sys.stderr)
+            cap.set(cv2.CAP_PROP_FRAME_WIDTH,  width)
+            cap.set(cv2.CAP_PROP_FRAME_HEIGHT, height)
+            cap.set(cv2.CAP_PROP_BUFFERSIZE, 1)
+            return cap
+        else:
+            print(f"[robocam]   ⚠️  v4l2 opened but can't read frames (CSI camera may need libcamera)", file=sys.stderr)
+            if cam_info["type"] == "CSI":
+                print(f"[robocam]   ℹ️  Fix: sudo apt install gstreamer1.0-libcamera", file=sys.stderr)
     else:
-        print(f"[robocam]   → Failed to open via v4l2", file=sys.stderr)
+        print(f"[robocam]   ✗ Failed to open device", file=sys.stderr)
+    
+    # Try to set props anyway (might help)
     cap.set(cv2.CAP_PROP_FRAME_WIDTH,  width)
     cap.set(cv2.CAP_PROP_FRAME_HEIGHT, height)
-    # Reduce internal buffer — prevents stale frames on slow ARM boards
     cap.set(cv2.CAP_PROP_BUFFERSIZE, 1)
     return cap
 
@@ -680,7 +708,13 @@ class RoboCamApp(tk.Tk):
         self.cap = open_camera(self.selected_cam, width=w, height=h)
 
         if not self.cap or not self.cap.isOpened():
-            self._log("Failed to open camera. Try another device.", "error")
+            msg = "Failed to open camera."
+            if self.selected_cam["type"] == "CSI":
+                msg += " For CSI cameras, you may need to reinstall with libcamera support."
+                msg += " Run: bash ~/Robocam/install.sh"
+            else:
+                msg += " Try another USB camera, or check connections."
+            self._log(msg, "error")
             self._set_status("Connection failed", DANGER)
             return
 
@@ -761,7 +795,12 @@ class RoboCamApp(tk.Tk):
             return
 
         if frame is None:
-            self._log("Camera read error. Check connection.", "error")
+            msg = "Camera read error: can't get frames from device."
+            if self.selected_cam and self.selected_cam.get("type") == "CSI":
+                msg += "\nCSI camera needs libcamera support. Fix: bash ~/Robocam/install.sh"
+            else:
+                msg += "\nCheck: Is the camera connected? Try another device?"
+            self._log(msg, "error")
             self._set_status("Camera error", DANGER)
             self._disconnect_camera(silent=True)
             return

@@ -110,12 +110,13 @@ declare -A PKGS=(
     ["python3-dev"]="Python development headers"
     ["$VENV_PKG"]="Python virtual environment"
     ["v4l-utils"]="Camera device detection (v4l2)"
-    ["libcamera-apps"]="CSI camera support (libcamera)"
     ["libcamera0"]="libcamera runtime library"
+    ["libcamera-dev"]="libcamera development files"
     ["gstreamer1.0-tools"]="GStreamer tools"
     ["gstreamer1.0-plugins-base"]="GStreamer base plugins"
     ["gstreamer1.0-plugins-good"]="GStreamer good plugins"
     ["gstreamer1.0-plugins-bad"]="GStreamer bad plugins (codec support)"
+    ["gstreamer1.0-libcamera"]="GStreamer libcamera plugin (IMPORTANT)"
     ["libopenjp2-7"]="JPEG2000 codec"
 )
 
