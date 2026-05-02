@@ -2,7 +2,17 @@
 
 ## ❌ Segmentation Fault on RPi 4 / Ubuntu 22
 
-### Root Causes
+### NEW: Stack Smashing / TTK Theme Crash (FIXED!)
+- Symptom: `*** stack smashing detected ***: terminated` or ttk::ThemeChanged error
+- Why: Tkinter theme system has bugs on ARM/Pi that corrupt memory
+- Fix: Already applied in latest version! Just reinstall:
+  ```bash
+  cd ~/Robocam
+  bash install.sh
+  ```
+- Details: See [PI_CRASH_FIX.md](PI_CRASH_FIX.md)
+
+### Root Causes (Other)
 
 **Cause 1: Missing Display Server (Most Common)**
 - Symptom: `Segmentation fault (core dumped)` when running `python3 robocam.py`

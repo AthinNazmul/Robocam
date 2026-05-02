@@ -315,7 +315,9 @@ class RoboCamApp(tk.Tk):
                                    bg=BG_DARK, fg=TEXT_MUTED, font=FONT_MONO)
         self.status_lbl.pack(side="right", padx=6)
 
-        ttk.Separator(self, orient="horizontal").pack(fill="x", padx=8)
+        # Use tk.Frame instead of ttk.Separator for ARM compatibility
+        separator = tk.Frame(self, bg=BORDER, height=1)
+        separator.pack(fill="x", padx=8)
 
         main = tk.Frame(self, bg=BG_DARK)
         main.pack(fill="both", expand=True, padx=12, pady=8)
@@ -386,9 +388,16 @@ class RoboCamApp(tk.Tk):
                  fg=TEXT_MUTED, font=("Courier New", 8)).pack(
             anchor="w", padx=8, pady=(6, 0))
         self.res_var = tk.StringVar(value="640x480")
-        ttk.Combobox(sc, textvariable=self.res_var,
-                     values=["320x240", "640x480", "1280x720", "1920x1080"],
-                     state="readonly", width=18).pack(padx=8, pady=4, anchor="w")
+        
+        # Try to use ttk.Combobox, but fall back to tk.Entry on ARM if needed
+        try:
+            ttk.Combobox(sc, textvariable=self.res_var,
+                         values=["320x240", "640x480", "1280x720", "1920x1080"],
+                         state="readonly", width=18).pack(padx=8, pady=4, anchor="w")
+        except Exception:
+            # Fallback: simple tk.Entry if ttk fails
+            tk.Entry(sc, textvariable=self.res_var, width=18,
+                     bg=BG_CARD, fg=TEXT_PRIMARY, relief="flat").pack(padx=8, pady=4, anchor="w")
         tk.Label(sc, text="Save Folder", bg=BG_CARD,
                  fg=TEXT_MUTED, font=("Courier New", 8)).pack(anchor="w", padx=8)
         fr = tk.Frame(sc, bg=BG_CARD)
@@ -486,13 +495,26 @@ class RoboCamApp(tk.Tk):
         )
 
     def _apply_styles(self):
-        style = ttk.Style(self)
-        style.theme_use("default")
-        style.configure("TCombobox",
-                        fieldbackground=BG_CARD, background=BG_CARD,
-                        foreground=TEXT_PRIMARY, selectbackground=ACCENT2,
-                        borderwidth=0)
-        style.configure("TSeparator", background=BORDER)
+        """
+        Apply ttk styles. On ARM/Pi systems, some theme operations can cause
+        segmentation faults. We wrap everything in try/except to be safe.
+        """
+        try:
+            style = ttk.Style(self)
+            # Skip theme_use() on Pi — it causes crashes on some systems
+            # style.theme_use("default")  # ← Disabled for ARM compatibility
+            try:
+                style.configure("TCombobox",
+                                fieldbackground=BG_CARD, background=BG_CARD,
+                                foreground=TEXT_PRIMARY, selectbackground=ACCENT2,
+                                borderwidth=0)
+                style.configure("TSeparator", background=BORDER)
+            except Exception:
+                # If even style.configure fails, just skip it
+                pass
+        except Exception as e:
+            # If ttk styling fails, the app still works fine
+            print(f"[WARN] ttk styling not available (app will still work): {e}", file=sys.stderr)
 
     def _log(self, msg, level="info"):
         ts = datetime.datetime.now().strftime("%H:%M:%S")
