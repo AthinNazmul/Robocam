@@ -153,53 +153,67 @@ def detect_cameras():
                 if idx in seen_indices:
                     continue
                 
-                # Test if this device can actually capture frames
-                print(f"[robocam] Testing {line} ({current_name})...", file=sys.stderr)
-                cap = cv2.VideoCapture(idx, cv2.CAP_V4L2)
-                if not cap.isOpened():
-                    cap.release()
-                    print(f"[robocam]   → Can't open", file=sys.stderr)
-                    continue
-                ret, _ = cap.read()
-                cap.release()
-                if not ret:
-                    print(f"[robocam]   → Can't read frames", file=sys.stderr)
-                    continue
-                
-                print(f"[robocam]   → OK! Adding as camera", file=sys.stderr)
                 seen_indices.add(idx)
+                
+                # Determine camera type first
                 csi_kw   = ["mmal", "unicam", "imx", "ov", "csi", "rpicam", "camera", "pisp"]
                 cam_type = "CSI" if any(
                     k in current_name.lower() for k in csi_kw
                 ) else "USB"
-                cameras.append({
-                    "index":  idx,
-                    "name":   current_name,
-                    "type":   cam_type,
-                    "device": f"/dev/video{idx}",
-                })
+                
+                # For CSI cameras, trust libcamera will handle it
+                # For USB cameras, verify they can read frames
+                if cam_type == "CSI":
+                    print(f"[robocam] Found CSI camera: {line} ({current_name})", file=sys.stderr)
+                    cameras.append({
+                        "index":  idx,
+                        "name":   current_name,
+                        "type":   cam_type,
+                        "device": f"/dev/video{idx}",
+                    })
+                else:
+                    # USB camera - test it works
+                    print(f"[robocam] Testing USB camera {line} ({current_name})...", file=sys.stderr)
+                    cap = cv2.VideoCapture(idx, cv2.CAP_V4L2)
+                    if not cap.isOpened():
+                        cap.release()
+                        print(f"[robocam]   → Can't open USB camera", file=sys.stderr)
+                        continue
+                    ret, _ = cap.read()
+                    cap.release()
+                    if not ret:
+                        print(f"[robocam]   → Can't read from USB camera", file=sys.stderr)
+                        continue
+                    print(f"[robocam]   → USB camera OK", file=sys.stderr)
+                    cameras.append({
+                        "index":  idx,
+                        "name":   current_name,
+                        "type":   cam_type,
+                        "device": f"/dev/video{idx}",
+                    })
     except (FileNotFoundError, subprocess.TimeoutExpired):
         pass
 
     # ── Fallback: probe /dev/video0-9 directly ───────────────
     if not cameras:
+        print(f"[robocam] Using fallback camera detection", file=sys.stderr)
         for i in range(10):
             if i in seen_indices:
                 continue
             if not os.path.exists(f"/dev/video{i}"):
                 continue
+            # Assume it's a camera if device exists and can open
+            # (might be CSI which needs libcamera, so don't test frame read)
             cap = cv2.VideoCapture(i, cv2.CAP_V4L2)
             if cap.isOpened():
-                ret, _ = cap.read()
                 cap.release()
-                if ret:
-                    cameras.append({
-                        "index":  i,
-                        "name":   f"Camera {i}",
-                        "type":   "Unknown",
-                        "device": f"/dev/video{i}",
-                    })
-                    seen_indices.add(i)
+                cameras.append({
+                    "index":  i,
+                    "name":   f"Camera {i}",
+                    "type":   "CSI",  # Assume CSI if unknown
+                    "device": f"/dev/video{i}",
+                })
+                seen_indices.add(i)
 
     # ── libcamera check (Pi 5 / Ubuntu 22+) ──────────────────
     try:
@@ -212,6 +226,7 @@ def detect_cameras():
                     or "imx" in combined.lower()
                     or "ov"  in combined.lower())
         if has_csi:
+            print(f"[robocam] libcamera detected CSI camera", file=sys.stderr)
             tagged = False
             for cam in cameras:
                 if cam["type"] == "CSI":
@@ -228,6 +243,7 @@ def detect_cameras():
     except (FileNotFoundError, subprocess.TimeoutExpired):
         pass
 
+    print(f"[robocam] Camera detection complete: found {len(cameras)} camera(s)", file=sys.stderr)
     return cameras
 
 
