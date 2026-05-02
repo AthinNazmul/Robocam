@@ -113,6 +113,19 @@ SAVE_DIR     = os.path.expanduser("~/robocam_output")
 #  CAMERA DETECTION
 #  Pure logic — no Tkinter calls. Safe to run in any thread.
 # ─────────────────────────────────────────────────────────────
+
+def has_libcamera_support():
+    """Check if libcamera is available and working."""
+    try:
+        result = subprocess.run(
+            ["libcamera-hello", "--list-cameras"],
+            capture_output=True, text=True, timeout=5
+        )
+        return result.returncode == 0 and "Available cameras" in (result.stdout + result.stderr)
+    except Exception:
+        return False
+
+
 def detect_cameras():
     """
     Scan for all connected cameras via v4l2 + libcamera.
@@ -244,6 +257,14 @@ def detect_cameras():
         pass
 
     print(f"[robocam] Camera detection complete: found {len(cameras)} camera(s)", file=sys.stderr)
+    
+    # Check if CSI camera found but libcamera not available
+    has_csi = any(cam["type"] == "CSI" for cam in cameras)
+    has_libcam = has_libcamera_support()
+    if has_csi and not has_libcam:
+        print(f"[robocam] ⚠️  WARNING: CSI camera detected but libcamera not working!", file=sys.stderr)
+        print(f"[robocam]    Fix: sudo apt install -y libcamera0 libcamera-dev gstreamer1.0-libcamera", file=sys.stderr)
+    
     return cameras
 
 
@@ -323,9 +344,13 @@ def open_camera(cam_info, width=640, height=480):
             cap.set(cv2.CAP_PROP_BUFFERSIZE, 1)
             return cap
         else:
-            print(f"[robocam]   ⚠️  v4l2 opened but can't read frames (CSI camera may need libcamera)", file=sys.stderr)
+            print(f"[robocam]   ⚠️  v4l2 opened but can't read frames", file=sys.stderr)
             if cam_info["type"] == "CSI":
-                print(f"[robocam]   ℹ️  Fix: sudo apt install gstreamer1.0-libcamera", file=sys.stderr)
+                print(f"[robocam]   ℹ️  CSI Camera Issue:", file=sys.stderr)
+                print(f"[robocam]      • libcamera may not be installed or working", file=sys.stderr)
+                print(f"[robocam]      • Run: bash ~/Robocam/check_libcamera.sh (diagnose)", file=sys.stderr)
+                print(f"[robocam]      • Install: sudo apt install -y libcamera0 libcamera-dev gstreamer1.0-libcamera", file=sys.stderr)
+                print(f"[robocam]      • Reboot: sudo reboot", file=sys.stderr)
     else:
         print(f"[robocam]   ✗ Failed to open device", file=sys.stderr)
     
@@ -710,8 +735,13 @@ class RoboCamApp(tk.Tk):
         if not self.cap or not self.cap.isOpened():
             msg = "Failed to open camera."
             if self.selected_cam["type"] == "CSI":
-                msg += " For CSI cameras, you may need to reinstall with libcamera support."
-                msg += " Run: bash ~/Robocam/install.sh"
+                msg += (
+                    "\n\nCSI Camera Fix:\n"
+                    "   1. Run: bash ~/Robocam/check_libcamera.sh (to diagnose)\n"
+                    "   2. Install libcamera: sudo apt install -y libcamera0 libcamera-dev gstreamer1.0-libcamera\n"
+                    "   3. Reboot: sudo reboot\n"
+                    "   4. Try again"
+                )
             else:
                 msg += " Try another USB camera, or check connections."
             self._log(msg, "error")
@@ -797,7 +827,12 @@ class RoboCamApp(tk.Tk):
         if frame is None:
             msg = "Camera read error: can't get frames from device."
             if self.selected_cam and self.selected_cam.get("type") == "CSI":
-                msg += "\nCSI camera needs libcamera support. Fix: bash ~/Robocam/install.sh"
+                msg += (
+                    "\n\nCSI Camera Fix:\n"
+                    "   1. Run: bash ~/Robocam/check_libcamera.sh\n"
+                    "   2. Install: sudo apt install -y libcamera0 libcamera-dev gstreamer1.0-libcamera\n"
+                    "   3. Reboot: sudo reboot"
+                )
             else:
                 msg += "\nCheck: Is the camera connected? Try another device?"
             self._log(msg, "error")
