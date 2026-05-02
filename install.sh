@@ -105,23 +105,39 @@ VENV_PKG="python3.${PYTHON_MINOR}-venv"
 info "Detected Python 3.$PYTHON_MINOR — will install $VENV_PKG"
 
 declare -A PKGS=(
-    ["python3-tk"]="Tkinter GUI framework"
+    ["python3-tk"]="Tkinter GUI framework (REQUIRED)"
     ["python3-pip"]="Python package manager"
+    ["python3-dev"]="Python development headers"
     ["$VENV_PKG"]="Python virtual environment"
     ["v4l-utils"]="Camera device detection (v4l2)"
     ["libcamera-apps"]="CSI camera support (libcamera)"
+    ["libcamera0"]="libcamera runtime library"
+    ["gstreamer1.0-tools"]="GStreamer tools"
+    ["gstreamer1.0-plugins-base"]="GStreamer base plugins"
+    ["gstreamer1.0-plugins-good"]="GStreamer good plugins"
+    ["gstreamer1.0-plugins-bad"]="GStreamer bad plugins (codec support)"
+    ["libopenjp2-7"]="JPEG2000 codec"
 )
 
 for pkg in "${!PKGS[@]}"; do
     desc="${PKGS[$pkg]}"
     if dpkg -s "$pkg" &>/dev/null 2>&1; then
-        success "$pkg — already installed  ($desc)"
+        success "$pkg — already installed"
     else
-        info "Installing $pkg ($desc)..."
+        info "Installing $pkg..."
         if sudo apt install -y "$pkg" -qq 2>/dev/null; then
             success "$pkg — installed"
         else
-            warn "$pkg — failed to install. Skipping. ($desc)"
+            # Try again with normal priority in case of transient failures
+            if sudo apt install -y "$pkg" 2>/dev/null; then
+                success "$pkg — installed (with warnings)"
+            else
+                if [[ "$desc" == *"REQUIRED"* ]]; then
+                    error "CRITICAL: $pkg failed to install. Cannot continue."
+                else
+                    warn "$pkg — failed to install (continued anyway)"
+                fi
+            fi
         fi
     fi
 done
@@ -209,8 +225,36 @@ fi
 mkdir -p "$HOME/robocam_output"
 success "Output folder: ~/robocam_output/"
 
-# ── Step 7: Camera detection check ───────────────────────────
-step "Step 7 — Camera Detection Check"
+# ── Step 7: User permissions ─────────────────────────────────
+step "Step 7 — Setting Camera Permissions"
+
+if groups "$USER" | grep -q video; then
+    success "User already in video group"
+else
+    info "Adding user to video group (for camera access)..."
+    if sudo usermod -a -G video "$USER" 2>/dev/null; then
+        success "User added to video group"
+        warn "⚠️  Log out and back in, or run: newgrp video"
+    else
+        warn "Could not add to video group — try: sudo usermod -a -G video $USER"
+    fi
+fi
+
+# ── Step 8: System-wide launcher ─────────────────────────────
+step "Step 8 — Creating System Launcher"
+
+LAUNCHER_BIN="/usr/local/bin/robocam"
+info "Creating system launcher: $LAUNCHER_BIN"
+sudo tee "$LAUNCHER_BIN" > /dev/null << LAUNCHER_BIN_EOF
+#!/bin/bash
+# RoboNeT Camera Tool — System Launcher
+exec bash "$INSTALL_DIR/run_robocam.sh" "\$@"
+LAUNCHER_BIN_EOF
+sudo chmod +x "$LAUNCHER_BIN"
+success "System launcher created: robocam"
+
+# ── Step 9: Camera detection check ───────────────────────────
+step "Step 9 — Camera Detection Check"
 
 echo "  Scanning v4l2 devices..."
 echo ""
@@ -231,20 +275,25 @@ echo "$LIBCAM_OUT" | sed 's/^/    /'
 echo ""
 echo "────────────────────────────────────────────────────────────"
 echo -e "${GREEN}${BOLD}"
-echo "  ✅  Installation complete!"
+echo "  ✅  Installation Complete!"
 echo -e "${NC}"
-echo -e "  ${BOLD}Launch the tool:${NC}"
+echo ""
+echo -e "  ${BOLD}🚀 Launch the tool:${NC}"
+echo ""
+echo -e "    ${CYAN}robocam${NC}  (from anywhere)"
+echo ""
+echo -e "  ${BOLD}Or:${NC}"
 echo ""
 echo -e "    ${CYAN}bash ~/robocam/run_robocam.sh${NC}"
 echo ""
-echo -e "  ${BOLD}Or from any terminal:${NC}"
-echo ""
-echo -e "    ${CYAN}cd ~/robocam && source env/bin/activate && python3 robocam.py${NC}"
+echo -e "  ${BOLD}Desktop shortcut:${NC}  See Desktop → RoboNeT Camera Tool.desktop"
 echo ""
 echo -e "  ${BOLD}Photos & videos saved to:${NC}  ${CYAN}~/robocam_output/${NC}"
 echo ""
-echo -e "  ${YELLOW}⚠️  Requires a desktop session (VNC or physical monitor)${NC}"
-echo -e "  ${YELLOW}   The GUI will NOT work over plain SSH.${NC}"
+if [[ "$SHELL" == *"bash"* ]] || [[ "$SHELL" == *"zsh"* ]]; then
+    echo -e "  ${YELLOW}💡 Tip: Add to ~/.bashrc or ~/.zshrc for auto-complete:${NC}"
+    echo -e "    ${CYAN}alias robocam='robocam'${NC}"
+fi
 echo ""
 echo "────────────────────────────────────────────────────────────"
 echo ""

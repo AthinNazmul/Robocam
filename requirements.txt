@@ -1,7 +1,13 @@
 # RoboNeT Camera Tool — Python Dependencies
 # Install via: pip install -r requirements.txt
-# Note: python3-tk must be installed via apt (not pip)
-#   sudo apt install python3-tk
+#
+# IMPORTANT SYSTEM DEPENDENCIES (install via apt, NOT pip):
+#   sudo apt install python3-tk python3-pip python3-dev -y
+#   sudo apt install libcamera-apps v4l-utils -y
+#   sudo apt install gstreamer1.0-plugins-base gstreamer1.0-plugins-good -y
+#
+# See QUICKSTART.md or TROUBLESHOOTING.md for full setup guide
 
-opencv-python>=4.8.0
-Pillow>=10.0.0
+# Graphics
+opencv-python>=4.8.0              # Camera capture and frame processing
+Pillow>=10.0.0                    # Image conversion and Tkinter display

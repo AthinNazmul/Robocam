@@ -58,52 +58,52 @@ On **Ubuntu 24.04**, they don't — `picamera` doesn't exist, device paths are d
 
 ---
 
-## 🚀 Quick Start
+## 🚀 Quick Start — 2 Steps
 
 ```bash
-# 1. Clone the repo
-git clone https://github.com/YOUR_USERNAME/robocam-tool.git
-cd robocam-tool
-
-# 2. Run the installer
+# Step 1: Run the installer (handles everything)
+cd ~/Robocam
 bash install.sh
 
-# 3. Launch the tool
-bash ~/robocam/run_robocam.sh
+# Step 2: Launch the tool (from anywhere)
+robocam
 ```
 
-That's it. The installer handles everything else.
+**That's all.** Everything else is automatic.
 
 ---
 
-## 📦 What the Installer Does
+## 📦 What the Installer Does Automatically
 
-| Step | Action |
-|------|--------|
-| 1 | Checks Ubuntu version & Pi model |
-| 2 | Installs `python3-tk`, `v4l-utils`, `libcamera-apps` via apt |
-| 3 | Creates a Python virtual environment at `~/robocam/env` |
-| 4 | Installs `opencv-python` and `pillow` inside the venv |
-| 5 | Copies the tool to `~/robocam/` |
-| 6 | Creates a launcher script `~/robocam/run_robocam.sh` |
-| 7 | Creates a desktop shortcut (if Desktop folder exists) |
-| 8 | Runs a live camera detection check |
+- ✅ Detects your Pi model & Ubuntu version
+- ✅ Installs all system dependencies (`python3-tk`, `libcamera`, GStreamer, etc.)
+- ✅ Creates a Python virtual environment
+- ✅ Installs Python packages (`opencv`, `pillow`)
+- ✅ Sets up camera permissions (video group)
+- ✅ Creates system launcher (`robocam` command)
+- ✅ Creates desktop shortcut
+- ✅ Detects connected cameras
+- ✅ Creates output folder
 
 ---
 
-## 🛠️ Manual Installation (without installer)
+## 🪄 Alternative: Manual Setup (not recommended)
+
+If you prefer to skip the installer:
 
 ```bash
-# System packages
+# Install system dependencies
 sudo apt update
-sudo apt install -y python3-tk v4l-utils libcamera-apps python3-pip
+sudo apt install -y python3-tk python3-pip v4l-utils libcamera-apps gstreamer1.0-plugins-bad
 
-# Python packages
+# Install Python packages
 pip install opencv-python pillow
 
 # Run directly
 python3 src/robocam.py
 ```
+
+**But we recommend using the installer** — it's smarter and handles edge cases.
 
 ---
 

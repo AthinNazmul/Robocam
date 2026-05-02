@@ -17,18 +17,17 @@ Author : Nazmul Hasan Athin |
 Org    : United International University — CENTER
 """
 
-import tkinter as tk
-from tkinter import ttk, filedialog
+import os
+import sys
+import time
 import threading
 import queue
 import subprocess
-import os
-import time
 import datetime
 import re
-import sys
 
-# ── Dependency checks ────────────────────────────────────────
+# ── Pre-Tkinter dependency checks ───────────────────────────
+# These MUST succeed before importing tkinter to avoid segfaults
 try:
     import cv2
 except ImportError:
@@ -41,6 +40,30 @@ try:
 except ImportError:
     print("[ERROR] Pillow not found.")
     print("        Fix: pip install pillow")
+    sys.exit(1)
+
+# ── Check Display/Tkinter BEFORE importing tkinter ──────────
+# Failure here = likely "Segmentation fault" on headless systems
+try:
+    import tkinter as tk
+    from tkinter import ttk, filedialog
+    
+    # Verify Tk can initialize (requires X11 display on Linux/ARM)
+    # This will fail on headless systems or missing DISPLAY
+    _test_root = tk.Tk()
+    _test_root.destroy()
+except Exception as e:
+    print("[ERROR] Tkinter GUI initialization failed.")
+    print("        Possible causes:")
+    print("        • Tkinter package not installed (install python3-tk via apt)")
+    print("        • No X11 display server (use SSH -X or set up DISPLAY)")
+    print("        • Not a terminal environment")
+    print(f"        • Details: {e}")
+    print()
+    print("[FIX] On Raspberry Pi:")
+    print("     1. sudo apt install python3-tk")
+    print("     2. Use SSH with X11 forwarding: ssh -X pi@<ip>")
+    print("     See TROUBLESHOOTING.md for more options.")
     sys.exit(1)
 
 # ── Force V4L2 backend on Linux (more stable on ARM) ─────────
